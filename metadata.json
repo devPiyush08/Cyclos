@@ -1,0 +1,6 @@
+{
+  "name": "CycloneWatch - Tropical Cyclone AI Decision Support",
+  "description": "AI/ML identification, classification, and 48-hour track & intensity prediction of tropical cyclones over the North Indian Ocean from multi-source INSAT satellite data (SIH PS 26070).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

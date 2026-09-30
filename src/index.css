@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+:root {
+  --bg-gradient-from: #D9E9DE;
+  --bg-gradient-via: #E5EFE8;
+  --bg-gradient-to: #CFE2D5;
+  --shell-bg: #FAFBF9;
+  --card-bg: #FFFFFF;
+  --card-border: #E8EFEA;
+  --dark-primary: #1C2520;
+  --forest-green: #274332;
+  --soft-sage: #D2E4D7;
+  --warm-gold: #B88E2F;
+  --warm-gold-bg: #FFF3E3;
+  --text-main: #1C261F;
+  --text-secondary: #6A7970;
+  --text-muted: #95A59B;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: linear-gradient(135deg, #D9E9DE 0%, #E6EFE9 50%, #CFE2D5 100%);
+  color: #1C261F;
+  min-height: 100vh;
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Custom rounded card shadows matching Paperpillar UI kit */
+.paper-shadow {
+  box-shadow: 0 10px 30px -5px rgba(28, 45, 34, 0.05);
+}
+
+.paper-shell-shadow {
+  box-shadow: 0 25px 70px -15px rgba(28, 45, 34, 0.12);
+}
+
+/* Custom scrollbar matching clean minimal design */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CFDCD3;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #B6C9BC;
+}
