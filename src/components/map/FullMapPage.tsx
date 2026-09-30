@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAppStore } from '../../store/useStore';
 import { STORMS_DATA } from '../../data/mockData';
 import {
@@ -7,11 +7,14 @@ import {
   Eye,
   Check,
   RotateCcw,
-  Sliders,
   Wind,
   MapPin,
   Calendar,
-  ChevronDown
+  ChevronDown,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  AlertTriangle
 } from 'lucide-react';
 import { formatCoords, formatDistance, formatTimeCompact, formatWind } from '../../utils/meteorology';
 
@@ -22,10 +25,18 @@ export const FullMapPage: React.FC = () => {
     unitWind,
     unitDist,
     mapLayers,
-    setMapLayer
+    setMapLayer,
+    asOfTime,
+    mode,
+    revealTruth
   } = useAppStore();
 
   const [activePreset, setActivePreset] = useState<'forecast' | 'analysis' | 'verification'>('forecast');
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
   const [selectedPoint, setSelectedPoint] = useState<{
     label: string;
     coords: string;
@@ -42,35 +53,49 @@ export const FullMapPage: React.FC = () => {
   const mapLonToX = (lon: number) => ((lon - 64) / 32) * mapWidth;
   const mapLatToY = (lat: number) => ((25 - lat) / 19) * mapHeight;
 
+  // In replay mode, respect the temporal cutoff (as_of)
+  const visibleTrackHistory = mode === 'replay'
+    ? currentStorm.track_history.filter(pt => new Date(pt.timestamp).getTime() <= new Date(asOfTime).getTime())
+    : currentStorm.track_history;
+
+  const currentPoint = visibleTrackHistory.length > 0
+    ? visibleTrackHistory[visibleTrackHistory.length - 1]
+    : { lat: currentStorm.current_lat, lon: currentStorm.current_lon, vmax_kt: currentStorm.current_vmax_kt, grade: currentStorm.current_grade, timestamp: currentStorm.last_seen };
+
   // Analysed track points
-  const trackSvgPoints = currentStorm.track_history
+  const trackSvgPoints = visibleTrackHistory
     .map(pt => `${mapLonToX(pt.lon)},${mapLatToY(pt.lat)}`)
     .join(' ');
 
-  // Forecast track points
+  // Full ground truth line (if revealTruth is on in replay)
+  const truthTrackPoints = currentStorm.track_history
+    .map(pt => `${mapLonToX(pt.lon)},${mapLatToY(pt.lat)}`)
+    .join(' ');
+
+  // Forecast track points from current position
   const forecastSvgPoints = [
-    `${mapLonToX(currentStorm.current_lon)},${mapLatToY(currentStorm.current_lat)}`,
+    `${mapLonToX(currentPoint.lon)},${mapLatToY(currentPoint.lat)}`,
     ...currentStorm.forecast_48h.map(pt => `${mapLonToX(pt.lon)},${mapLatToY(pt.lat)}`)
   ].join(' ');
 
   // Cone polygon points
-  const allPoints = [
-    { lat: currentStorm.current_lat, lon: currentStorm.current_lon, radius_km: 15 },
+  const allConePoints = [
+    { lat: currentPoint.lat, lon: currentPoint.lon, radius_km: 15 },
     ...currentStorm.forecast_48h.map(f => ({ lat: f.lat, lon: f.lon, radius_km: f.cone_radius_km }))
   ];
 
   const coneLeftPoints: string[] = [];
   const coneRightPoints: string[] = [];
 
-  for (let i = 0; i < allPoints.length; i++) {
-    const p = allPoints[i];
+  for (let i = 0; i < allConePoints.length; i++) {
+    const p = allConePoints[i];
     const rDeg = p.radius_km / 111;
     let angle = 0;
-    if (i < allPoints.length - 1) {
-      const next = allPoints[i + 1];
+    if (i < allConePoints.length - 1) {
+      const next = allConePoints[i + 1];
       angle = Math.atan2(next.lat - p.lat, next.lon - p.lon) + Math.PI / 2;
     } else {
-      const prev = allPoints[i - 1];
+      const prev = allConePoints[i - 1];
       angle = Math.atan2(p.lat - prev.lat, p.lon - prev.lon) + Math.PI / 2;
     }
     const xL = mapLonToX(p.lon + Math.cos(angle) * rDeg);
@@ -83,6 +108,32 @@ export const FullMapPage: React.FC = () => {
   }
 
   const conePolygonPoints = [...coneLeftPoints, ...coneRightPoints].join(' ');
+
+  // Zoom / Pan handlers
+  const handleZoomIn = () => setZoomLevel(prev => Math.min(2.5, prev + 0.3));
+  const handleZoomOut = () => setZoomLevel(prev => Math.max(1, prev - 0.3));
+  const handleResetZoom = () => {
+    setZoomLevel(1);
+    setPanOffset({ x: 0, y: 0 });
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (zoomLevel > 1) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging && zoomLevel > 1) {
+      setPanOffset({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    }
+  };
+
+  const handleMouseUp = () => setIsDragging(false);
 
   // Preset changer
   const applyPreset = (preset: 'forecast' | 'analysis' | 'verification') => {
@@ -103,14 +154,15 @@ export const FullMapPage: React.FC = () => {
       setMapLayer('forecast', true);
       setMapLayer('cone', true);
       setMapLayer('track', true);
-      setMapLayer('reference', true);
       setMapLayer('ensemble', true);
     }
   };
 
+  const windFormatted = formatWind(currentPoint.vmax_kt, unitWind);
+
   return (
     <div className="space-y-4">
-      {/* Top Map Toolbar - Paperpillar style */}
+      {/* Top Map Toolbar - Paperpillar Clean Header */}
       <div className="bg-white rounded-3xl p-4 border border-[#E8EFEA] paper-shadow flex flex-wrap items-center justify-between gap-3">
         {/* Left: Storm Selector & Preset Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
@@ -118,8 +170,11 @@ export const FullMapPage: React.FC = () => {
           <div className="relative">
             <select
               value={activeStormId}
-              onChange={e => setActiveStorm(e.target.value)}
-              className="text-xs font-semibold font-mono bg-[#F0F5F1] text-[#274332] py-2 pl-3.5 pr-8 rounded-full border border-[#DCE7DF] appearance-none cursor-pointer hover:border-[#B5CDC0]"
+              onChange={e => {
+                setActiveStorm(e.target.value);
+                handleResetZoom();
+              }}
+              className="text-xs font-semibold font-mono bg-[#F0F5F1] text-[#274332] py-2 pl-3.5 pr-8 rounded-full border border-[#DCE7DF] appearance-none cursor-pointer hover:border-[#B5CDC0] focus:outline-none"
             >
               {STORMS_DATA.map(s => (
                 <option key={s.id} value={s.id}>
@@ -165,363 +220,435 @@ export const FullMapPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Right: Quick Layer Toggles */}
-        <div className="flex items-center gap-1.5 text-xs font-mono">
-          <button
-            onClick={() => setMapLayer('satellite', !mapLayers.satellite)}
-            className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer flex items-center gap-1 ${
-              mapLayers.satellite
-                ? 'bg-[#E8F4EC] text-[#2F6B48] border-[#CCDCD2] font-semibold'
-                : 'bg-white text-[#6A7970] border-[#E8EFEA]'
-            }`}
-          >
-            <span>Satellite</span>
-            {mapLayers.satellite && <Check className="w-3 h-3" />}
-          </button>
+        {/* Right: Quick Layer Toggles & Zoom Controls */}
+        <div className="flex items-center flex-wrap gap-2 text-xs font-mono">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setMapLayer('satellite', !mapLayers.satellite)}
+              className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer flex items-center gap-1 ${
+                mapLayers.satellite
+                  ? 'bg-[#E8F4EC] text-[#2F6B48] border-[#CCDCD2] font-semibold'
+                  : 'bg-white text-[#6A7970] border-[#E8EFEA]'
+              }`}
+            >
+              <span>Satellite</span>
+              {mapLayers.satellite && <Check className="w-3 h-3" />}
+            </button>
 
-          <button
-            onClick={() => setMapLayer('cone', !mapLayers.cone)}
-            className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer flex items-center gap-1 ${
-              mapLayers.cone
-                ? 'bg-[#E8F4EC] text-[#2F6B48] border-[#CCDCD2] font-semibold'
-                : 'bg-white text-[#6A7970] border-[#E8EFEA]'
-            }`}
-          >
-            <span>P67 Cone</span>
-            {mapLayers.cone && <Check className="w-3 h-3" />}
-          </button>
+            <button
+              onClick={() => setMapLayer('track', !mapLayers.track)}
+              className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer flex items-center gap-1 ${
+                mapLayers.track
+                  ? 'bg-[#E8F4EC] text-[#2F6B48] border-[#CCDCD2] font-semibold'
+                  : 'bg-white text-[#6A7970] border-[#E8EFEA]'
+              }`}
+            >
+              <span>Track</span>
+              {mapLayers.track && <Check className="w-3 h-3" />}
+            </button>
 
-          <button
-            onClick={() => setMapLayer('ensemble', !mapLayers.ensemble)}
-            className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer flex items-center gap-1 ${
-              mapLayers.ensemble
-                ? 'bg-[#E8F4EC] text-[#2F6B48] border-[#CCDCD2] font-semibold'
-                : 'bg-white text-[#6A7970] border-[#E8EFEA]'
-            }`}
-          >
-            <span>Ensemble</span>
-            {mapLayers.ensemble && <Check className="w-3 h-3" />}
-          </button>
+            <button
+              onClick={() => setMapLayer('forecast', !mapLayers.forecast)}
+              className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer flex items-center gap-1 ${
+                mapLayers.forecast
+                  ? 'bg-[#E8F4EC] text-[#2F6B48] border-[#CCDCD2] font-semibold'
+                  : 'bg-white text-[#6A7970] border-[#E8EFEA]'
+              }`}
+            >
+              <span>48h Forecast</span>
+              {mapLayers.forecast && <Check className="w-3 h-3" />}
+            </button>
 
-          <button
-            onClick={() => setMapLayer('graticule', !mapLayers.graticule)}
-            className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer flex items-center gap-1 ${
-              mapLayers.graticule
-                ? 'bg-[#E8F4EC] text-[#2F6B48] border-[#CCDCD2] font-semibold'
-                : 'bg-white text-[#6A7970] border-[#E8EFEA]'
-            }`}
-          >
-            <span>Grid</span>
-            {mapLayers.graticule && <Check className="w-3 h-3" />}
-          </button>
+            <button
+              onClick={() => setMapLayer('cone', !mapLayers.cone)}
+              className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer flex items-center gap-1 ${
+                mapLayers.cone
+                  ? 'bg-[#E8F4EC] text-[#2F6B48] border-[#CCDCD2] font-semibold'
+                  : 'bg-white text-[#6A7970] border-[#E8EFEA]'
+              }`}
+            >
+              <span>Cone</span>
+              {mapLayers.cone && <Check className="w-3 h-3" />}
+            </button>
+
+            <button
+              onClick={() => setMapLayer('ensemble', !mapLayers.ensemble)}
+              className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer flex items-center gap-1 ${
+                mapLayers.ensemble
+                  ? 'bg-[#E8F4EC] text-[#2F6B48] border-[#CCDCD2] font-semibold'
+                  : 'bg-white text-[#6A7970] border-[#E8EFEA]'
+              }`}
+            >
+              <span>Ensemble</span>
+              {mapLayers.ensemble && <Check className="w-3 h-3" />}
+            </button>
+          </div>
+
+          {/* Zoom Buttons */}
+          <div className="flex items-center gap-1 bg-[#F0F5F1] p-1 rounded-full border border-[#DCE7DF]">
+            <button
+              onClick={handleZoomIn}
+              className="p-1.5 rounded-full bg-white hover:bg-[#E3ECE6] text-[#1C2520] transition-colors cursor-pointer"
+              title="Zoom In"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={handleZoomOut}
+              className="p-1.5 rounded-full bg-white hover:bg-[#E3ECE6] text-[#1C2520] transition-colors cursor-pointer"
+              title="Zoom Out"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            {zoomLevel > 1 && (
+              <button
+                onClick={handleResetZoom}
+                className="p-1.5 rounded-full bg-white hover:bg-[#E3ECE6] text-[#1C2520] transition-colors cursor-pointer text-[10px] font-bold px-2"
+                title="Reset View"
+              >
+                Reset
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Main Interactive Map Stage */}
-      <div className="relative w-full rounded-3xl overflow-hidden border border-[#DCE7DF] bg-[#DCE8E2] paper-shadow">
-        <svg
-          viewBox={`0 0 ${mapWidth} ${mapHeight}`}
-          className="w-full h-auto select-none block"
-          style={{ minHeight: '480px', maxHeight: '680px' }}
+      <div
+        className={`relative w-full rounded-3xl overflow-hidden border border-[#DCE7DF] bg-[#D8E6DF] paper-shadow ${
+          zoomLevel > 1 ? 'cursor-grab active:cursor-grabbing' : ''
+        }`}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
+        <div
+          style={{
+            transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
+            transformOrigin: 'center center',
+            transition: isDragging ? 'none' : 'transform 0.2s ease-out'
+          }}
         >
-          <defs>
-            {/* Soft Satellite Cloud Glow Shader */}
-            <radialGradient id="cloudGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.75" />
-              <stop offset="40%" stopColor="#C9DCD2" stopOpacity="0.5" />
-              <stop offset="80%" stopColor="#9FBBAF" stopOpacity="0.2" />
-              <stop offset="100%" stopColor="#DCE8E2" stopOpacity="0" />
-            </radialGradient>
-          </defs>
+          <svg
+            viewBox={`0 0 ${mapWidth} ${mapHeight}`}
+            className="w-full h-auto select-none block"
+            style={{ minHeight: '480px', maxHeight: '660px' }}
+          >
+            <defs>
+              {/* Soft Satellite Cloud Glow Shader */}
+              <radialGradient id="cloudGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.8" />
+                <stop offset="35%" stopColor="#C9DCD2" stopOpacity="0.5" />
+                <stop offset="75%" stopColor="#9FBBAF" stopOpacity="0.2" />
+                <stop offset="100%" stopColor="#D8E6DF" stopOpacity="0" />
+              </radialGradient>
+            </defs>
 
-          {/* Graticule Grid Lines */}
-          {mapLayers.graticule &&
-            [10, 15, 20, 25].map(lat => (
-              <g key={`lat-${lat}`}>
-                <line
-                  x1="0"
-                  y1={mapLatToY(lat)}
-                  x2={mapWidth}
-                  y2={mapLatToY(lat)}
-                  stroke="#98B2A6"
-                  strokeWidth="0.7"
-                  strokeDasharray="4 4"
-                  opacity="0.5"
+            {/* Ocean Basin Shading */}
+            <rect width={mapWidth} height={mapHeight} fill="#D4E4DC" />
+
+            {/* Graticule Grid Lines */}
+            {mapLayers.graticule &&
+              [10, 15, 20, 25].map(lat => (
+                <g key={`lat-${lat}`}>
+                  <line
+                    x1="0"
+                    y1={mapLatToY(lat)}
+                    x2={mapWidth}
+                    y2={mapLatToY(lat)}
+                    stroke="#98B2A6"
+                    strokeWidth="0.7"
+                    strokeDasharray="4 4"
+                    opacity="0.5"
+                  />
+                  <text
+                    x="14"
+                    y={mapLatToY(lat) - 5}
+                    fill="#5A786B"
+                    fontSize="10"
+                    fontFamily="JetBrains Mono, monospace"
+                  >
+                    {lat}°N
+                  </text>
+                </g>
+              ))}
+
+            {mapLayers.graticule &&
+              [70, 75, 80, 85, 90, 95].map(lon => (
+                <g key={`lon-${lon}`}>
+                  <line
+                    x1={mapLonToX(lon)}
+                    y1="0"
+                    x2={mapLonToX(lon)}
+                    y2={mapHeight}
+                    stroke="#98B2A6"
+                    strokeWidth="0.7"
+                    strokeDasharray="4 4"
+                    opacity="0.5"
+                  />
+                  <text
+                    x={mapLonToX(lon) + 4}
+                    y={mapHeight - 12}
+                    fill="#5A786B"
+                    fontSize="10"
+                    fontFamily="JetBrains Mono, monospace"
+                  >
+                    {lon}°E
+                  </text>
+                </g>
+              ))}
+
+            {/* Coastlines & Landmass Shapes (India, Bay of Bengal, Arabian Sea) */}
+            <path
+              d={`
+                M ${mapLonToX(64)} ${mapLatToY(25)}
+                L ${mapLonToX(69)} ${mapLatToY(25)}
+                L ${mapLonToX(70)} ${mapLatToY(23)}
+                L ${mapLonToX(72)} ${mapLatToY(21.5)}
+                L ${mapLonToX(72.8)} ${mapLatToY(19)}
+                L ${mapLonToX(73.8)} ${mapLatToY(15.5)}
+                L ${mapLonToX(75)} ${mapLatToY(12.5)}
+                L ${mapLonToX(77.5)} ${mapLatToY(8.1)}
+                L ${mapLonToX(78.5)} ${mapLatToY(9.2)}
+                L ${mapLonToX(80.2)} ${mapLatToY(13.1)}
+                L ${mapLonToX(82.5)} ${mapLatToY(16.5)}
+                L ${mapLonToX(83.3)} ${mapLatToY(17.7)}
+                L ${mapLonToX(85.8)} ${mapLatToY(19.8)}
+                L ${mapLonToX(86.7)} ${mapLatToY(20.3)}
+                L ${mapLonToX(87.5)} ${mapLatToY(21.5)}
+                L ${mapLonToX(88.5)} ${mapLatToY(22.2)}
+                L ${mapLonToX(90.5)} ${mapLatToY(22.8)}
+                L ${mapLonToX(92)} ${mapLatToY(21)}
+                L ${mapLonToX(94)} ${mapLatToY(16)}
+                L ${mapLonToX(96)} ${mapLatToY(16)}
+                L ${mapLonToX(96)} ${mapLatToY(25)}
+                Z
+              `}
+              fill="#E8E1D5"
+              stroke="#BFB5A3"
+              strokeWidth="1.2"
+            />
+
+            {/* Sri Lanka Island */}
+            <path
+              d={`
+                M ${mapLonToX(79.7)} ${mapLatToY(9.8)}
+                Q ${mapLonToX(81.8)} ${mapLatToY(8.5)} ${mapLonToX(81.3)} ${mapLatToY(6.5)}
+                Q ${mapLonToX(80.5)} ${mapLatToY(6.0)} ${mapLonToX(79.8)} ${mapLatToY(7.5)}
+                Z
+              `}
+              fill="#E8E1D5"
+              stroke="#BFB5A3"
+              strokeWidth="1.2"
+            />
+
+            {/* Ocean Labels */}
+            <text
+              x={mapLonToX(88)}
+              y={mapLatToY(13.5)}
+              fill="#6E8A7D"
+              fontSize="14"
+              fontFamily="JetBrains Mono, monospace"
+              fontWeight="bold"
+              letterSpacing="2"
+              opacity="0.6"
+            >
+              BAY OF BENGAL
+            </text>
+            <text
+              x={mapLonToX(67)}
+              y={mapLatToY(15)}
+              fill="#6E8A7D"
+              fontSize="14"
+              fontFamily="JetBrains Mono, monospace"
+              fontWeight="bold"
+              letterSpacing="2"
+              opacity="0.6"
+            >
+              ARABIAN SEA
+            </text>
+
+            {/* Coastal Stations */}
+            {[
+              { name: 'Chennai', lon: 80.27, lat: 13.08 },
+              { name: 'Visakhapatnam', lon: 83.3, lat: 17.7 },
+              { name: 'Puri / Paradip', lon: 86.6, lat: 20.3 },
+              { name: 'Kolkata', lon: 88.36, lat: 22.57 },
+              { name: 'Mumbai', lon: 72.87, lat: 19.07 }
+            ].map(city => (
+              <g key={city.name}>
+                <circle
+                  cx={mapLonToX(city.lon)}
+                  cy={mapLatToY(city.lat)}
+                  r="3.5"
+                  fill="#554E43"
                 />
                 <text
-                  x="14"
-                  y={mapLatToY(lat) - 5}
-                  fill="#5A786B"
-                  fontSize="10"
+                  x={mapLonToX(city.lon) + 6}
+                  y={mapLatToY(city.lat) + 3}
+                  fill="#453E33"
+                  fontSize="9.5"
                   fontFamily="JetBrains Mono, monospace"
+                  fontWeight="600"
                 >
-                  {lat}°N
+                  {city.name}
                 </text>
               </g>
             ))}
 
-          {mapLayers.graticule &&
-            [70, 75, 80, 85, 90, 95].map(lon => (
-              <g key={`lon-${lon}`}>
-                <line
-                  x1={mapLonToX(lon)}
-                  y1="0"
-                  x2={mapLonToX(lon)}
-                  y2={mapHeight}
-                  stroke="#98B2A6"
-                  strokeWidth="0.7"
-                  strokeDasharray="4 4"
-                  opacity="0.5"
-                />
-                <text
-                  x={mapLonToX(lon) + 4}
-                  y={mapHeight - 12}
-                  fill="#5A786B"
-                  fontSize="10"
-                  fontFamily="JetBrains Mono, monospace"
-                >
-                  {lon}°E
-                </text>
+            {/* Satellite Infrared Feature centered on current cyclone eye */}
+            {mapLayers.satellite && (
+              <g transform={`translate(${mapLonToX(currentPoint.lon)}, ${mapLatToY(currentPoint.lat)})`}>
+                <circle r="95" fill="url(#cloudGlow)" />
+                <circle r="55" fill="#FFFFFF" fillOpacity="0.4" />
+                <circle r="25" fill="#FFFFFF" fillOpacity="0.75" />
               </g>
-            ))}
+            )}
 
-          {/* Coastlines & Landmass Shapes (India, Bay of Bengal, Arabian Sea) */}
-          <path
-            d={`
-              M ${mapLonToX(64)} ${mapLatToY(25)}
-              L ${mapLonToX(69)} ${mapLatToY(25)}
-              L ${mapLonToX(70)} ${mapLatToY(23)}
-              L ${mapLonToX(72)} ${mapLatToY(21.5)}
-              L ${mapLonToX(72.8)} ${mapLatToY(19)}
-              L ${mapLonToX(73.8)} ${mapLatToY(15.5)}
-              L ${mapLonToX(75)} ${mapLatToY(12.5)}
-              L ${mapLonToX(77.5)} ${mapLatToY(8.1)}
-              L ${mapLonToX(78.5)} ${mapLatToY(9.2)}
-              L ${mapLonToX(80.2)} ${mapLatToY(13.1)}
-              L ${mapLonToX(82.5)} ${mapLatToY(16.5)}
-              L ${mapLonToX(83.3)} ${mapLatToY(17.7)}
-              L ${mapLonToX(85.8)} ${mapLatToY(19.8)}
-              L ${mapLonToX(86.7)} ${mapLatToY(20.3)}
-              L ${mapLonToX(87.5)} ${mapLatToY(21.5)}
-              L ${mapLonToX(88.5)} ${mapLatToY(22.2)}
-              L ${mapLonToX(90.5)} ${mapLatToY(22.8)}
-              L ${mapLonToX(92)} ${mapLatToY(21)}
-              L ${mapLonToX(94)} ${mapLatToY(16)}
-              L ${mapLonToX(96)} ${mapLatToY(16)}
-              L ${mapLonToX(96)} ${mapLatToY(25)}
-              Z
-            `}
-            fill="#E5DDD0"
-            stroke="#C4BAA9"
-            strokeWidth="1.2"
-          />
-
-          {/* Sri Lanka Island */}
-          <path
-            d={`
-              M ${mapLonToX(79.7)} ${mapLatToY(9.8)}
-              Q ${mapLonToX(81.8)} ${mapLatToY(8.5)} ${mapLonToX(81.3)} ${mapLatToY(6.5)}
-              Q ${mapLonToX(80.5)} ${mapLatToY(6.0)} ${mapLonToX(79.8)} ${mapLatToY(7.5)}
-              Z
-            `}
-            fill="#E5DDD0"
-            stroke="#C4BAA9"
-            strokeWidth="1.2"
-          />
-
-          {/* Ocean Labels */}
-          <text
-            x={mapLonToX(88)}
-            y={mapLatToY(13.5)}
-            fill="#6E8A7D"
-            fontSize="14"
-            fontFamily="JetBrains Mono, monospace"
-            fontWeight="bold"
-            letterSpacing="2"
-            opacity="0.6"
-          >
-            BAY OF BENGAL
-          </text>
-          <text
-            x={mapLonToX(67)}
-            y={mapLatToY(15)}
-            fill="#6E8A7D"
-            fontSize="14"
-            fontFamily="JetBrains Mono, monospace"
-            fontWeight="bold"
-            letterSpacing="2"
-            opacity="0.6"
-          >
-            ARABIAN SEA
-          </text>
-
-          {/* Coastal Station Anchor Marks */}
-          {[
-            { name: 'Chennai', lon: 80.27, lat: 13.08 },
-            { name: 'Visakhapatnam', lon: 83.3, lat: 17.7 },
-            { name: 'Puri / Paradip', lon: 86.6, lat: 20.3 },
-            { name: 'Kolkata', lon: 88.36, lat: 22.57 },
-            { name: 'Mumbai', lon: 72.87, lat: 19.07 }
-          ].map(city => (
-            <g key={city.name}>
-              <circle
-                cx={mapLonToX(city.lon)}
-                cy={mapLatToY(city.lat)}
-                r="3"
-                fill="#554E43"
+            {/* Ground Truth Full Path in Replay mode (if revealed) */}
+            {mode === 'replay' && revealTruth && (
+              <polyline
+                points={truthTrackPoints}
+                fill="none"
+                stroke="#B88E2F"
+                strokeWidth="2"
+                strokeDasharray="4 4"
+                opacity="0.7"
               />
-              <text
-                x={mapLonToX(city.lon) + 6}
-                y={mapLatToY(city.lat) + 3}
-                fill="#554E43"
-                fontSize="9"
-                fontFamily="JetBrains Mono, monospace"
-                fontWeight="600"
-              >
-                {city.name}
-              </text>
-            </g>
-          ))}
+            )}
 
-          {/* Satellite Infrared Cloud Feature */}
-          {mapLayers.satellite && (
-            <g transform={`translate(${mapLonToX(currentStorm.current_lon)}, ${mapLatToY(currentStorm.current_lat)})`}>
-              <circle r="95" fill="url(#cloudGlow)" />
-              <circle r="55" fill="#FFFFFF" fillOpacity="0.4" />
-              <circle r="25" fill="#FFFFFF" fillOpacity="0.7" />
-            </g>
-          )}
+            {/* Ensemble Members (5 Trajectories) */}
+            {mapLayers.ensemble &&
+              currentStorm.ensemble_members.map(member => {
+                const pts = [
+                  `${mapLonToX(currentPoint.lon)},${mapLatToY(currentPoint.lat)}`,
+                  ...member.track.map(t => `${mapLonToX(t.lon)},${mapLatToY(t.lat)}`)
+                ].join(' ');
+                return (
+                  <polyline
+                    key={member.member_id}
+                    points={pts}
+                    fill="none"
+                    stroke="#5F8876"
+                    strokeWidth="1.2"
+                    strokeDasharray="2 3"
+                    opacity="0.7"
+                  />
+                );
+              })}
 
-          {/* Ensemble Members (5 Trajectories) */}
-          {mapLayers.ensemble &&
-            currentStorm.ensemble_members.map(member => {
-              const pts = [
-                `${mapLonToX(currentStorm.current_lon)},${mapLatToY(currentStorm.current_lat)}`,
-                ...member.track.map(t => `${mapLonToX(t.lon)},${mapLatToY(t.lat)}`)
-              ].join(' ');
-              return (
-                <polyline
-                  key={member.member_id}
-                  points={pts}
-                  fill="none"
-                  stroke="#7A9A8B"
-                  strokeWidth="1.2"
-                  strokeDasharray="2 3"
-                  opacity="0.6"
-                />
-              );
-            })}
-
-          {/* P67 Conformal Cone */}
-          {mapLayers.cone && (
-            <polygon
-              points={conePolygonPoints}
-              fill="#2F6B48"
-              fillOpacity="0.14"
-              stroke="#2F6B48"
-              strokeWidth="1.5"
-              strokeDasharray="4 3"
-            />
-          )}
-
-          {/* Analysed Historical Track Line */}
-          {mapLayers.track && (
-            <polyline
-              points={trackSvgPoints}
-              fill="none"
-              stroke="#1C2520"
-              strokeWidth="3.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )}
-
-          {/* 48-Hour Forecast Track Line */}
-          {mapLayers.forecast && (
-            <polyline
-              points={forecastSvgPoints}
-              fill="none"
-              stroke="#274332"
-              strokeWidth="2.8"
-              strokeDasharray="6 5"
-              strokeLinecap="round"
-            />
-          )}
-
-          {/* Analysed Historical Points */}
-          {mapLayers.track &&
-            currentStorm.track_history.map((pt, idx) => (
-              <circle
-                key={idx}
-                cx={mapLonToX(pt.lon)}
-                cy={mapLatToY(pt.lat)}
-                r="4.5"
-                fill="#1C2520"
-                stroke="#FFFFFF"
+            {/* P67 Conformal Cone */}
+            {mapLayers.cone && (
+              <polygon
+                points={conePolygonPoints}
+                fill="#2F6B48"
+                fillOpacity="0.14"
+                stroke="#2F6B48"
                 strokeWidth="1.5"
-                className="cursor-pointer hover:scale-150 transition-transform"
-                onClick={() =>
-                  setSelectedPoint({
-                    label: `Observed · ${pt.grade}`,
-                    coords: formatCoords(pt.lat, pt.lon),
-                    vmax: `${pt.vmax_kt} kt (${Math.round(pt.vmax_kt * 1.852)} km/h)`,
-                    detail: `MSLP: ${pt.mslp_hpa} hPa · Grade: ${pt.grade}`,
-                    time: formatTimeCompact(pt.timestamp)
-                  })
-                }
+                strokeDasharray="4 3"
               />
-            ))}
+            )}
 
-          {/* 48h Forecast Points (+6h, +12h, +24h, +48h) */}
-          {mapLayers.forecast &&
-            currentStorm.forecast_48h.map((fpt, idx) => (
-              <g
-                key={idx}
-                className="cursor-pointer group"
-                onClick={() =>
-                  setSelectedPoint({
-                    label: `Forecast +${fpt.lead_h}h`,
-                    coords: formatCoords(fpt.lat, fpt.lon),
-                    vmax: `${fpt.vmax_mean_kt} kt (Spread ±${fpt.ensemble_spread_km}km)`,
-                    detail: `Predicted: ${fpt.predicted_grade} · Land Dist: ${fpt.dist_to_land_km} km`,
-                    time: formatTimeCompact(fpt.valid_time)
-                  })
-                }
-              >
+            {/* Analysed Historical Track Line */}
+            {mapLayers.track && (
+              <polyline
+                points={trackSvgPoints}
+                fill="none"
+                stroke="#1C2520"
+                strokeWidth="3.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
+
+            {/* 48-Hour Forecast Track Line */}
+            {mapLayers.forecast && (
+              <polyline
+                points={forecastSvgPoints}
+                fill="none"
+                stroke="#274332"
+                strokeWidth="2.8"
+                strokeDasharray="6 5"
+                strokeLinecap="round"
+              />
+            )}
+
+            {/* Analysed Historical Points */}
+            {mapLayers.track &&
+              visibleTrackHistory.map((pt, idx) => (
                 <circle
-                  cx={mapLonToX(fpt.lon)}
-                  cy={mapLatToY(fpt.lat)}
-                  r="6"
-                  fill="#FFFFFF"
-                  stroke="#274332"
-                  strokeWidth="2"
+                  key={idx}
+                  cx={mapLonToX(pt.lon)}
+                  cy={mapLatToY(pt.lat)}
+                  r="4.5"
+                  fill="#1C2520"
+                  stroke="#FFFFFF"
+                  strokeWidth="1.5"
+                  className="cursor-pointer hover:scale-150 transition-transform"
+                  onClick={() =>
+                    setSelectedPoint({
+                      label: `Observed · ${pt.grade}`,
+                      coords: formatCoords(pt.lat, pt.lon),
+                      vmax: `${pt.vmax_kt} kt (${Math.round(pt.vmax_kt * 1.852)} km/h)`,
+                      detail: `MSLP: ${pt.mslp_hpa} hPa · Grade: ${pt.grade}`,
+                      time: formatTimeCompact(pt.timestamp)
+                    })
+                  }
                 />
-                <circle
-                  cx={mapLonToX(fpt.lon)}
-                  cy={mapLatToY(fpt.lat)}
-                  r="2.5"
-                  fill="#274332"
-                />
-                <text
-                  x={mapLonToX(fpt.lon) + 8}
-                  y={mapLatToY(fpt.lat) + 3}
-                  fill="#274332"
-                  fontSize="10"
-                  fontFamily="JetBrains Mono, monospace"
-                  fontWeight="bold"
+              ))}
+
+            {/* 48h Forecast Points */}
+            {mapLayers.forecast &&
+              currentStorm.forecast_48h.map((fpt, idx) => (
+                <g
+                  key={idx}
+                  className="cursor-pointer group"
+                  onClick={() =>
+                    setSelectedPoint({
+                      label: `Forecast +${fpt.lead_h}h`,
+                      coords: formatCoords(fpt.lat, fpt.lon),
+                      vmax: `${fpt.vmax_mean_kt} kt (Spread ±${fpt.ensemble_spread_km}km)`,
+                      detail: `Predicted: ${fpt.predicted_grade} · Land Dist: ${fpt.dist_to_land_km} km`,
+                      time: formatTimeCompact(fpt.valid_time)
+                    })
+                  }
                 >
-                  +{fpt.lead_h}h
-                </text>
-              </g>
-            ))}
+                  <circle
+                    cx={mapLonToX(fpt.lon)}
+                    cy={mapLatToY(fpt.lat)}
+                    r="6"
+                    fill="#FFFFFF"
+                    stroke="#274332"
+                    strokeWidth="2"
+                  />
+                  <circle
+                    cx={mapLonToX(fpt.lon)}
+                    cy={mapLatToY(fpt.lat)}
+                    r="2.5"
+                    fill="#274332"
+                  />
+                  <text
+                    x={mapLonToX(fpt.lon) + 8}
+                    y={mapLatToY(fpt.lat) + 3}
+                    fill="#274332"
+                    fontSize="10"
+                    fontFamily="JetBrains Mono, monospace"
+                    fontWeight="bold"
+                  >
+                    +{fpt.lead_h}h
+                  </text>
+                </g>
+              ))}
 
-          {/* Current Storm Center Pulse Marker */}
-          <g transform={`translate(${mapLonToX(currentStorm.current_lon)}, ${mapLatToY(currentStorm.current_lat)})`}>
-            <circle r="16" fill="#C25845" opacity="0.25" className="animate-ping" />
-            <circle r="8" fill="#C25845" stroke="#FFFFFF" strokeWidth="2.5" />
-            <circle r="2.5" fill="#FFFFFF" />
-          </g>
-        </svg>
+            {/* Active Storm Center Vortex Marker */}
+            <g transform={`translate(${mapLonToX(currentPoint.lon)}, ${mapLatToY(currentPoint.lat)})`}>
+              <circle r="16" fill="#C25845" opacity="0.25" className="animate-ping" />
+              <circle r="8" fill="#C25845" stroke="#FFFFFF" strokeWidth="2.5" />
+              <circle r="2.5" fill="#FFFFFF" />
+            </g>
+          </svg>
+        </div>
 
         {/* Selected Point Popover Card - Paperpillar style */}
         {selectedPoint && (
@@ -545,8 +672,8 @@ export const FullMapPage: React.FC = () => {
         )}
 
         {/* Bottom Legend Pill Bar */}
-        <div className="absolute bottom-3 left-3 right-3 bg-white/90 backdrop-blur-md px-4 py-2 rounded-2xl border border-[#DCE7DF] text-xs font-mono flex flex-wrap items-center justify-between gap-2 shadow-xs">
-          <div className="flex items-center gap-4">
+        <div className="absolute bottom-3 left-3 right-3 bg-white/95 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-[#DCE7DF] text-xs font-mono flex flex-wrap items-center justify-between gap-2 shadow-xs">
+          <div className="flex items-center flex-wrap gap-4">
             <span className="flex items-center gap-1.5 text-[#1C2520]">
               <span className="w-3.5 h-1 bg-[#1C2520] rounded-full inline-block" />
               <span>Analysed</span>
@@ -559,10 +686,16 @@ export const FullMapPage: React.FC = () => {
               <span className="w-2.5 h-2.5 bg-[#2F6B48]/20 border border-[#2F6B48] rounded-xs inline-block" />
               <span>P67 Cone</span>
             </span>
+            {mode === 'replay' && revealTruth && (
+              <span className="flex items-center gap-1.5 text-[#B88E2F]">
+                <span className="w-3.5 h-1 border-t-2 border-dotted border-[#B88E2F] inline-block" />
+                <span>Ground Truth</span>
+              </span>
+            )}
           </div>
 
           <div className="text-[#6A7970]">
-            System Center: <strong className="text-[#1C2520]">{formatCoords(currentStorm.current_lat, currentStorm.current_lon)}</strong> · {currentStorm.current_vmax_kt} kt
+            System Center: <strong className="text-[#1C2520]">{formatCoords(currentPoint.lat, currentPoint.lon)}</strong> · {windFormatted.primary}
           </div>
         </div>
       </div>

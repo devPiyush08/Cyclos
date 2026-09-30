@@ -73,9 +73,38 @@ const defaultState: AppState = {
 // Global reactive store
 let state: AppState = { ...defaultState };
 const listeners = new Set<() => void>();
+let replayTimer: ReturnType<typeof setInterval> | null = null;
 
 function notify() {
   listeners.forEach(fn => fn());
+}
+
+function updateReplayTimer() {
+  if (replayTimer) {
+    clearInterval(replayTimer);
+    replayTimer = null;
+  }
+  if (state.isReplayPlaying) {
+    const intervalMs = state.replaySpeed === 5 ? 400 : state.replaySpeed === 2 ? 800 : 1600;
+    replayTimer = setInterval(() => {
+      const currentStorm = STORMS_DATA.find(s => s.id === state.activeStormId);
+      if (!currentStorm) return;
+      const history = currentStorm.track_history;
+      const currentIndex = history.findIndex(h => h.timestamp === state.asOfTime);
+      if (currentIndex >= 0 && currentIndex < history.length - 1) {
+        state.asOfTime = history[currentIndex + 1].timestamp;
+        notify();
+      } else if (currentIndex >= history.length - 1) {
+        // Reached the end: pause and reset playback state
+        state.isReplayPlaying = false;
+        updateReplayTimer();
+        notify();
+      } else {
+        state.asOfTime = history[0].timestamp;
+        notify();
+      }
+    }, intervalMs);
+  }
 }
 
 export function useAppStore() {
@@ -139,21 +168,25 @@ export function useAppStore() {
         state.activeStormId = scn.storm_id;
         state.asOfTime = scn.initial_as_of;
         state.isReplayPlaying = false;
-        state.currentTab = 'dashboard';
+        state.currentTab = 'replay';
+        updateReplayTimer();
         notify();
       }
     },
     stopReplay: () => {
       state.mode = 'live';
       state.isReplayPlaying = false;
+      updateReplayTimer();
       notify();
     },
     toggleReplayPlay: () => {
       state.isReplayPlaying = !state.isReplayPlaying;
+      updateReplayTimer();
       notify();
     },
     setReplaySpeed: (spd: 1 | 2 | 5) => {
       state.replaySpeed = spd;
+      updateReplayTimer();
       notify();
     },
     setRevealTruth: (v: boolean) => {
@@ -185,6 +218,7 @@ export function useAppStore() {
         }
       }
       state.isReplayPlaying = false;
+      updateReplayTimer();
       notify();
     },
     setSearchOpen: (open: boolean) => {

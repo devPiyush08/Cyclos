@@ -10,7 +10,8 @@ import {
   Calendar,
   Layers,
   MapPin,
-  Check
+  Check,
+  Compass
 } from 'lucide-react';
 import { formatCoords, formatTimeCompact } from '../../utils/meteorology';
 
@@ -28,9 +29,14 @@ export const ArchivePage: React.FC = () => {
     return matchesBasin && matchesSearch;
   });
 
-  const handleSelectStorm = (stormId: string) => {
+  const handleTrackStorm = (stormId: string) => {
     setActiveStorm(stormId);
-    setTab('dashboard');
+    setTab('map');
+  };
+
+  const handleInspectStorm = (stormId: string) => {
+    setActiveStorm(stormId);
+    setTab('storms');
   };
 
   return (
@@ -56,7 +62,7 @@ export const ArchivePage: React.FC = () => {
               placeholder="Search cyclone name, ID..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="text-xs font-mono bg-[#F0F5F1] text-[#1C2520] pl-8 pr-4 py-2 rounded-full border border-[#DCE7DF] focus:outline-none focus:border-[#274332] w-52"
+              className="text-xs font-mono bg-[#F0F5F1] text-[#1C2520] pl-8 pr-4 py-2 rounded-full border border-[#DCE7DF] focus:outline-none focus:border-[#274332] w-52 placeholder-[#95A59B]"
             />
             <Search className="w-3.5 h-3.5 text-[#6A7970] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
@@ -92,8 +98,8 @@ export const ArchivePage: React.FC = () => {
                 <th className="py-3 px-4">Basin</th>
                 <th className="py-3 px-4">Peak Intensity</th>
                 <th className="py-3 px-4">Peak Grade</th>
-                <th className="py-3 px-4">Lifespan</th>
-                <th className="py-3 px-4 text-right">Action</th>
+                <th className="py-3 px-4">Active Period</th>
+                <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F0F5F1]">
@@ -101,7 +107,7 @@ export const ArchivePage: React.FC = () => {
                 <tr
                   key={storm.id}
                   className="hover:bg-[#FAFBF9] transition-colors group cursor-pointer"
-                  onClick={() => handleSelectStorm(storm.id)}
+                  onClick={() => handleInspectStorm(storm.id)}
                 >
                   <td className="py-4 px-4 font-bold text-[#6A7970]">
                     {storm.id}
@@ -127,16 +133,21 @@ export const ArchivePage: React.FC = () => {
                     {formatTimeCompact(storm.first_seen)} - {formatTimeCompact(storm.last_seen)}
                   </td>
                   <td className="py-4 px-4 text-right">
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        handleSelectStorm(storm.id);
-                      }}
-                      className="px-3 py-1.5 rounded-full bg-[#F0F5F1] group-hover:bg-[#274332] text-[#274332] group-hover:text-white transition-all text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>Load In App</span>
-                      <ArrowRight className="w-3 h-3" />
-                    </button>
+                    <div className="inline-flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={() => handleInspectStorm(storm.id)}
+                        className="px-3 py-1.5 rounded-full bg-[#F0F5F1] hover:bg-[#E2EDE5] text-[#274332] text-xs font-semibold cursor-pointer"
+                      >
+                        Details
+                      </button>
+                      <button
+                        onClick={() => handleTrackStorm(storm.id)}
+                        className="px-3 py-1.5 rounded-full bg-[#274332] hover:bg-[#1C2520] text-white text-xs font-semibold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <Compass className="w-3 h-3" />
+                        <span>Map</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

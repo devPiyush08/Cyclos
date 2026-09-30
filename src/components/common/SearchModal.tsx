@@ -58,33 +58,33 @@ export const SearchModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 p-4 bg-[#1C261F]/40 backdrop-blur-sm">
       <div
-        className="w-full max-w-xl bg-white dark:bg-[#171D2B] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"
+        className="w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-[#E8EFEA] overflow-hidden"
         role="dialog"
         aria-modal="true"
       >
-        <div className="flex items-center px-4 py-3.5 border-b border-slate-100 dark:border-slate-800">
-          <Search className="w-5 h-5 text-slate-400 mr-3 shrink-0" />
+        <div className="flex items-center px-5 py-4 border-b border-[#F0F5F1]">
+          <Search className="w-5 h-5 text-[#6A7970] mr-3 shrink-0" />
           <input
             ref={inputRef}
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search cyclone by name (Asani, Biparjoy...), year, ID, or basin..."
-            className="w-full bg-transparent text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
+            className="w-full bg-transparent text-sm text-[#1C2520] placeholder-[#95A59B] focus:outline-none font-mono"
           />
           <button
             onClick={() => setSearchOpen(false)}
-            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+            className="p-1 text-[#95A59B] hover:text-[#1C2520] rounded-lg cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="max-h-80 overflow-y-auto p-2 divide-y divide-slate-100 dark:divide-slate-800/60">
+        <div className="max-h-80 overflow-y-auto p-3 divide-y divide-[#F0F5F1]">
           {filtered.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-500">
+            <div className="py-8 text-center text-xs font-mono text-[#6A7970]">
               No matching tropical cyclone found for "{searchQuery}".
             </div>
           ) : (
@@ -92,20 +92,20 @@ export const SearchModal: React.FC = () => {
               <button
                 key={storm.id}
                 onClick={() => handleSelectStorm(storm.id)}
-                className="w-full text-left p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-xl transition-colors flex items-center justify-between group"
+                className="w-full text-left p-3 hover:bg-[#FAFBF9] rounded-2xl transition-colors flex items-center justify-between group cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <GradeBadge grade={storm.peak_grade} size="sm" />
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm text-slate-900 dark:text-slate-100">
+                      <span className="font-bold text-sm text-[#1C2520]">
                         Cyclone {storm.name}
                       </span>
-                      <span className="font-mono text-xs text-slate-400">
+                      <span className="font-mono text-xs text-[#6A7970]">
                         ({storm.year})
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5 font-mono">
+                    <div className="flex items-center gap-2 text-xs text-[#6A7970] mt-0.5 font-mono">
                       <span>{storm.id}</span>
                       <span>·</span>
                       <span>{storm.basin}</span>
@@ -115,7 +115,7 @@ export const SearchModal: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs text-slate-400 group-hover:text-[#3B5BFF] transition-colors">
+                <div className="flex items-center gap-2 text-xs text-[#6A7970] group-hover:text-[#274332] transition-colors">
                   <span className="hidden sm:inline font-mono">{formatTimeCompact(storm.last_seen)}</span>
                   <ArrowRight className="w-4 h-4" />
                 </div>
@@ -124,9 +124,9 @@ export const SearchModal: React.FC = () => {
           )}
         </div>
 
-        <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900/40 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-          <span>Navigate with mouse or arrow keys</span>
-          <span>Press <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-slate-700 dark:text-slate-300">Esc</kbd> to close</span>
+        <div className="px-5 py-2.5 bg-[#FAFBF9] border-t border-[#F0F5F1] text-[11px] font-mono text-[#6A7970] flex items-center justify-between">
+          <span>Navigate with mouse or click</span>
+          <span>Press <kbd className="px-1.5 py-0.5 bg-white border border-[#DCE7DF] rounded text-[#1C2520]">Esc</kbd> to close</span>
         </div>
       </div>
     </div>

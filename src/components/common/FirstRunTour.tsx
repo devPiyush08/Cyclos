@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAppStore } from '../../store/useStore';
-import { Check, Compass, Clock, ShieldCheck, Zap } from 'lucide-react';
+import { Check, Compass, Clock, ShieldCheck, Zap, X } from 'lucide-react';
 
 export const FirstRunTour: React.FC = () => {
   const { isTourOpen, tourStep, setTourOpen, setTourStep, setTab } = useAppStore();
@@ -9,32 +9,32 @@ export const FirstRunTour: React.FC = () => {
 
   const steps = [
     {
-      title: '1. The 5-Second Situation Test',
-      icon: <Zap className="w-5 h-5 text-[#3B5BFF]" />,
+      title: '1. The 5-Second Situation Overview',
+      icon: <Zap className="w-5 h-5 text-[#274332]" />,
       content:
-        'Within 5 seconds of opening CycloneWatch, you immediately know: (1) Is there an active tropical cyclone? (2) How intense is it? (3) Where is it headed? (4) How confident is the ensemble model? (5) Are there any immediate coastal landfall watches or warnings?',
-      targetTab: 'dashboard'
+        'Instantly view active tropical cyclones over the North Indian Ocean, sustained wind intensities, translation vectors, and automated coastal landfall advisories.',
+      targetTab: 'dashboard' as const
     },
     {
-      title: '2. Global Replay & Temporal Cutoff',
-      icon: <Clock className="w-5 h-5 text-amber-500" />,
+      title: '2. Calibrated Uncertainty Cones & Live Map',
+      icon: <Compass className="w-5 h-5 text-[#2F6B48]" />,
       content:
-        'CycloneWatch strictly enforces the "as_of" temporal cutoff rule. Historical satellite scenes run through the inference pipeline as if live. Nothing from the future is ever revealed until the playback clock advances to it.',
-      targetTab: 'replay'
+        'Interactive SVG GIS canvas displaying analysed historical track, 48-hour multi-lead predictions, P67 uncertainty cones, and 5-member stochastic ensemble members.',
+      targetTab: 'map' as const
     },
     {
-      title: '3. Calibrated Uncertainty Cones',
-      icon: <Compass className="w-5 h-5 text-emerald-500" />,
+      title: '3. Historical Scene Replay Engine',
+      icon: <Clock className="w-5 h-5 text-[#B88E2F]" />,
       content:
-        'Deterministic lines alone are misleading. Every forecast is bounded by empirical P67 uncertainty cones and 5-member ensemble spread, reflecting realistic atmospheric predictability over the North Indian Ocean.',
-      targetTab: 'map'
+        'Evaluate AI inference on historical benchmark cyclones (Asani, Biparjoy) with temporal cutoffs, variable playback speeds (1x, 2x, 5x), and ground truth verification.',
+      targetTab: 'replay' as const
     },
     {
-      title: '4. Rigorous Model Verification & IMD Comparison',
-      icon: <ShieldCheck className="w-5 h-5 text-violet-500" />,
+      title: '4. Deep Learning Backbone & Verification',
+      icon: <ShieldCheck className="w-5 h-5 text-[#274332]" />,
       content:
-        'Explore the Model & AI tab to inspect the 4x4 confusion matrix, baseline benchmarks against CLIPER and Persistence, and post-event track error verification against official IMD Best Track records.',
-      targetTab: 'model'
+        'Inspect the ResNet-18 spatial-thermal multi-task model specifications, CLIPER baseline comparisons, and MAE benchmarks.',
+      targetTab: 'model' as const
     }
   ];
 
@@ -44,8 +44,6 @@ export const FirstRunTour: React.FC = () => {
     if (tourStep < steps.length) {
       const nextStep = tourStep + 1;
       setTourStep(nextStep);
-      // Optionally switch tabs to show the user the section
-      // @ts-expect-error valid tab
       setTab(steps[nextStep - 1].targetTab);
     } else {
       setTourOpen(false);
@@ -59,43 +57,43 @@ export const FirstRunTour: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-md bg-white dark:bg-[#171D2B] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1C261F]/40 backdrop-blur-sm">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-[#E8EFEA] p-6 relative">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800">
+            <div className="p-2.5 rounded-2xl bg-[#E8F4EC]">
               {current.icon}
             </div>
-            <span className="text-xs font-mono font-medium text-slate-400">
+            <span className="text-xs font-mono font-bold text-[#6A7970]">
               Step {tourStep} of {steps.length}
             </span>
           </div>
           <button
             onClick={handleSkip}
-            className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            className="text-xs text-[#95A59B] hover:text-[#1C2520] cursor-pointer"
           >
-            Skip tour
+            Skip
           </button>
         </div>
 
-        <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-2">
+        <h3 className="text-lg font-bold text-[#1C2520] mb-2">
           {current.title}
         </h3>
 
-        <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-6">
+        <p className="text-xs text-[#6A7970] leading-relaxed mb-6">
           {current.content}
         </p>
 
-        {/* Step dots */}
-        <div className="flex items-center justify-between">
+        {/* Step dots & Next button */}
+        <div className="flex items-center justify-between pt-3 border-t border-[#F0F5F1]">
           <div className="flex items-center gap-1.5">
             {steps.map((_, idx) => (
               <span
                 key={idx}
                 className={`h-1.5 rounded-full transition-all duration-200 ${
                   idx + 1 === tourStep
-                    ? 'w-6 bg-[#3B5BFF]'
-                    : 'w-1.5 bg-slate-200 dark:bg-slate-700'
+                    ? 'w-6 bg-[#274332]'
+                    : 'w-1.5 bg-[#DCE7DF]'
                 }`}
               />
             ))}
@@ -104,7 +102,7 @@ export const FirstRunTour: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               onClick={handleNext}
-              className="px-4 py-2 text-xs font-semibold text-white bg-[#3B5BFF] hover:bg-[#2A45E0] rounded-xl shadow-sm transition-colors flex items-center gap-1.5"
+              className="px-5 py-2 text-xs font-bold text-white bg-[#274332] hover:bg-[#1C2520] rounded-full shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               <span>{tourStep === steps.length ? 'Get Started' : 'Next'}</span>
               {tourStep === steps.length && <Check className="w-3.5 h-3.5" />}
